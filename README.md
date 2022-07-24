@@ -18,7 +18,7 @@ Tests the core transaction processor.
 
 # Use
 ```commandline
-cargo run /path/to/transactions.csv
+cargo run -- /path/to/transactions.csv
 ```
 The csv file is in the following format:
 - `type` The transaction type (string): 
