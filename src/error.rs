@@ -6,6 +6,8 @@ pub enum AccountingError {
     WithdrawalError,
     #[error("Error: Deposit transaction without an amount")]
     DepositError,
+    #[error("Error: Insufficient funds for dispute")]
+    DisputeError,
     #[error("Error: Could not deserialize record: {0}")]
     DeserializeError(String),
     #[error("Error: Could not send tx data to worker: {0}")]

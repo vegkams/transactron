@@ -104,8 +104,11 @@ impl TransactionProcessor {
                     // Transaction under dispute exists in the ledger
                     if t.amount.is_some() && !t.under_dispute {
                         // Dispute the amount iff this is a transaction with an associated amount (i.e. Deposit or Withdrawal)
-                        client.dispute(t.amount.unwrap());
-                        t.under_dispute = true;
+                        // and there are sufficient funds available to be held
+                        match client.dispute(t.amount.unwrap()) {
+                            Ok(()) => t.under_dispute = true,
+                            Err(e) => return Err(e),
+                        }
                     } // else ignore since it is an error on partners side
                 }
             }

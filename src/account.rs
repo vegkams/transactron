@@ -51,9 +51,14 @@ impl Account {
     }
 
     // Logic around existing tx etc. should be handled elsewhere
-    pub fn dispute(&mut self, amount: Decimal) {
-        self.held += amount;
-        self.available -= amount;
+    pub fn dispute(&mut self, amount: Decimal) -> Result<(), AccountingError>{
+        if self.available >= amount {
+            self.held += amount;
+            self.available -= amount;
+        } else {
+            return Err(AccountingError::DisputeError);
+        }
+        Ok(())
     }
 
     pub fn resolve(&mut self, amount: Decimal) {

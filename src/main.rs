@@ -30,6 +30,7 @@ async fn main() -> Result<(), AccountingError> {
         if let Ok(mut reader) = buffered_tx_reader(input_path) {
             // Create the transaction processor for this input stream
             let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
+            // Spawn a new thread for the processor, and let it await incoming data
             let processor: JoinHandle<TransactionProcessor> =
                 tokio::spawn(async move { processor.process().await });
 
