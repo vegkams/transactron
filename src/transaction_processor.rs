@@ -31,6 +31,7 @@ impl TransactionProcessor {
     }
 
     pub async fn process(mut self) -> Self {
+        // loop until sender is dropped
         while let Some(tx) = self.transaction_recv.recv().await {
             match self.process_transaction(tx).await {
                 // TODO: Error handling
@@ -68,8 +69,10 @@ impl TransactionProcessor {
         };
 
         let mut accounts = self.accounts.write().await;
+        // Create new client with default values if it doesn't already exist
         let mut client = accounts.entry(client_id).or_default();
         if client.client != client_id {
+            // New client, set correct client id
             client.client = client_id;
         }
 
@@ -164,12 +167,216 @@ mod test {
             .map(|(_, v)| v)
             .collect::<Vec<Account>>();
         assert_eq!(
-            &Account::new(
-                1u16,
-                dec!(1.5),
-                dec!(0),
-                dec!(1.5),
-            ),
+            &Account::new(1u16, dec!(1.5), dec!(0), dec!(1.5),),
+            output.get(0).unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_two_deposits_and_one_withdrawal() {
+        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
+        let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
+        let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
+        let processor: JoinHandle<TransactionProcessor> =
+            tokio::spawn(async move { processor.process().await });
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 1,
+                tx_id: 1,
+                amount: Some(dec!(1.5)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 2,
+                tx_id: 2,
+                amount: Some(dec!(3.3333)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Withdrawal(TransactionData {
+                client_id: 2,
+                tx_id: 3,
+                amount: Some(dec!(1)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        drop(sender);
+        processor.await.unwrap();
+
+        let accounts_output = accounts.read().await;
+        let output = accounts_output
+            .clone()
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect::<Vec<Account>>();
+
+        assert_eq!(
+            &Account::new(1u16, dec!(1.5), dec!(0), dec!(1.5),),
+            output.get(0).unwrap()
+        );
+        assert_eq!(
+            &Account::new(2u16, dec!(2.3333), dec!(0), dec!(2.3333),),
+            output.get(1).unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_dispute() {
+        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
+        let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
+        let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
+        let processor: JoinHandle<TransactionProcessor> =
+            tokio::spawn(async move { processor.process().await });
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 1,
+                tx_id: 1,
+                amount: Some(dec!(1.5)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: Some(dec!(3)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Dispute(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: None,
+                under_dispute: false,
+            }))
+            .unwrap();
+
+        drop(sender);
+        processor.await.unwrap();
+
+        let accounts_output = accounts.read().await;
+        let output = accounts_output
+            .clone()
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect::<Vec<Account>>();
+        assert_eq!(
+            &Account::new(1u16, dec!(1.5), dec!(3), dec!(4.5),),
+            output.get(0).unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_chargeback() {
+        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
+        let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
+        let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
+        let processor: JoinHandle<TransactionProcessor> =
+            tokio::spawn(async move { processor.process().await });
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 1,
+                tx_id: 1,
+                amount: Some(dec!(1.5)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: Some(dec!(3)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Dispute(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: None,
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Chargeback(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: None,
+                under_dispute: false,
+            }))
+            .unwrap();
+
+        drop(sender);
+        processor.await.unwrap();
+
+        let accounts_output = accounts.read().await;
+        let output = accounts_output
+            .clone()
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect::<Vec<Account>>();
+
+        let mut account = Account::new(1u16, dec!(1.5), dec!(0), dec!(1.5));
+        account.locked = true;
+        assert_eq!(&account, output.get(0).unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_resolve() {
+        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
+        let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
+        let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
+        let processor: JoinHandle<TransactionProcessor> =
+            tokio::spawn(async move { processor.process().await });
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 1,
+                tx_id: 1,
+                amount: Some(dec!(1.5)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: Some(dec!(3)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Dispute(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: None,
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Resolve(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: None,
+                under_dispute: false,
+            }))
+            .unwrap();
+
+        drop(sender);
+        processor.await.unwrap();
+
+        let accounts_output = accounts.read().await;
+        let output = accounts_output
+            .clone()
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect::<Vec<Account>>();
+
+        assert_eq!(
+            &Account::new(1u16, dec!(4.5), dec!(0), dec!(4.5)),
             output.get(0).unwrap()
         );
     }
