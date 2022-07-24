@@ -36,7 +36,10 @@ impl TransactionProcessor {
             match self.process_transaction(tx).await {
                 // TODO: Error handling
                 Ok(_) => (),
-                Err(_) => (),
+                Err(_e) => {
+                    // Todo: Do more sophisticated error handling. Write the erroneous transaction to log etc.
+                    // eprintln!("Error processing transaction: {:?}", _e);
+                },
             };
         }
 
