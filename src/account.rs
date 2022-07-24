@@ -3,7 +3,7 @@ use rust_decimal_macros::dec;
 
 use crate::AccountingError;
 
-#[derive(serde::Serialize, Debug, Clone)]
+#[derive(serde::Serialize, Debug, Clone, PartialEq)]
 pub struct Account {
     pub client: u16,
     available: Decimal,
@@ -65,5 +65,11 @@ impl Account {
         self.held -= amount;
         self.total -= amount;
         self.locked = true;
+    }
+
+    pub fn normalize_values(&mut self) {
+        self.available = self.available.normalize();
+        self.held = self.held.normalize();
+        self.total = self.total.normalize();
     }
 }

@@ -1,6 +1,5 @@
 use account::Account;
 use rust_decimal::prelude::*;
-use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs::File;
@@ -39,7 +38,7 @@ async fn main() -> Result<(), AccountingError> {
             for record in reader.deserialize() {
                 let event: Record = match record {
                     Ok(r) => r,
-                    Err(_) => return Err(AccountingError::DeserializeError),
+                    Err(e) => return Err(AccountingError::DeserializeError(e.to_string())),
                 };
 
                 if let Some(tx) = record_to_transaction(event) {
@@ -50,11 +49,18 @@ async fn main() -> Result<(), AccountingError> {
             }
             drop(sender);
             for handle in processor_handles {
-                if let Ok(processor) = handle.await {
-                    let output = processor.get_accounts_state().await;
-                    print_output(output);
+                match handle.await {
+                    Ok(_processor) => (),
+                    Err(e) => return Err(AccountingError::HandleAwaitError(e.to_string())),
                 }
             }
+            let accounts_output = accounts.read().await;
+            let output = accounts_output
+                .clone()
+                .into_iter()
+                .map(|(_, v)| v)
+                .collect::<Vec<Account>>();
+            print_output(output);
         }
     }
     Ok(())
@@ -62,7 +68,8 @@ async fn main() -> Result<(), AccountingError> {
 
 fn print_output(output: Vec<Account>) {
     let mut writer = csv::Writer::from_writer(std::io::stdout());
-    for account in output {
+    for mut account in output {
+        account.normalize_values();
         writer.serialize(account).unwrap();
     }
     writer.flush().unwrap();
@@ -73,57 +80,80 @@ fn buffered_tx_reader(csv_path: String) -> Result<csv::Reader<BufReader<File>>, 
     let buffered_reader = BufReader::new(file);
     let csv_reader = csv::ReaderBuilder::new()
         .trim(csv::Trim::All)
+        .delimiter(b',')
+        .has_headers(true)
+        .flexible(true)
         .from_reader(buffered_reader);
     Ok(csv_reader)
 }
 
 fn record_to_transaction(record: Record) -> Option<Transaction> {
-    match record.transaction_type.as_str() {
-        "deposit" => {
-            record.amount?;
-            Some(Transaction::Deposit(TransactionData {
-                client_id: record.client,
-                tx_id: record.tx,
-                amount: Some(record.amount.unwrap()),
-                under_dispute: false,
-            }))
+    if let Some(transaction_type) = record.transaction_type {
+        match transaction_type.as_str() {
+            "deposit" => {
+                record.amount?;
+                record.client?;
+                record.tx?;
+                Some(Transaction::Deposit(TransactionData {
+                    client_id: record.client.unwrap(),
+                    tx_id: record.tx.unwrap(),
+                    amount: Some(record.amount.unwrap()),
+                    under_dispute: false,
+                }))
+            }
+            "withdrawal" => {
+                record.amount?;
+                record.client?;
+                record.tx?;
+                Some(Transaction::Withdrawal(TransactionData {
+                    client_id: record.client.unwrap(),
+                    tx_id: record.tx.unwrap(),
+                    amount: Some(record.amount.unwrap()),
+                    under_dispute: false,
+                }))
+            }
+            "dispute" => {
+                record.client?;
+                record.tx?;
+                Some(Transaction::Dispute(TransactionData {
+                    client_id: record.client.unwrap(),
+                    tx_id: record.tx.unwrap(),
+                    amount: None,
+                    under_dispute: false,
+                }))
+            }
+            "resolve" => {
+                record.client?;
+                record.tx?;
+                Some(Transaction::Resolve(TransactionData {
+                    client_id: record.client.unwrap(),
+                    tx_id: record.tx.unwrap(),
+                    amount: None,
+                    under_dispute: false,
+                }))
+            }
+            "chargeback" => {
+                record.client?;
+                record.tx?;
+                Some(Transaction::Chargeback(TransactionData {
+                    client_id: record.client.unwrap(),
+                    tx_id: record.tx.unwrap(),
+                    amount: None,
+                    under_dispute: false,
+                }))
+            }
+            _ => None,
         }
-        "withdrawal" => {
-            record.amount?;
-            Some(Transaction::Withdrawal(TransactionData {
-                client_id: record.client,
-                tx_id: record.tx,
-                amount: Some(record.amount.unwrap()),
-                under_dispute: false,
-            }))
-        }
-        "dispute" => Some(Transaction::Dispute(TransactionData {
-            client_id: record.client,
-            tx_id: record.tx,
-            amount: None,
-            under_dispute: false,
-        })),
-        "resolve" => Some(Transaction::Resolve(TransactionData {
-            client_id: record.client,
-            tx_id: record.tx,
-            amount: None,
-            under_dispute: false,
-        })),
-        "chargeback" => Some(Transaction::Chargeback(TransactionData {
-            client_id: record.client,
-            tx_id: record.tx,
-            amount: None,
-            under_dispute: false,
-        })),
-        _ => None,
+    } else {
+        None
     }
 }
 
 #[derive(serde::Deserialize, Debug)]
 pub struct Record {
     #[serde(rename = "type")]
-    transaction_type: String,
-    client: u16,
-    tx: u32,
+    transaction_type: Option<String>,
+    client: Option<u16>,
+    tx: Option<u32>,
     amount: Option<Decimal>,
 }

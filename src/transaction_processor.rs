@@ -103,7 +103,7 @@ impl TransactionProcessor {
                         // Dispute the amount iff this is a transaction with an associated amount (i.e. Deposit or Withdrawal)
                         client.dispute(t.amount.unwrap());
                         t.under_dispute = true;
-                    }
+                    } // else ignore since it is an error on partners side
                 }
             }
             Transaction::Resolve(tx_data) => {
@@ -114,7 +114,7 @@ impl TransactionProcessor {
                         // Dispute the amount iff this is a transaction with an associated amount (i.e. Deposit or Withdrawal)
                         client.resolve(t.amount.unwrap());
                         t.under_dispute = false;
-                    }
+                    } // else ignore since it is an error on partners side
                 }
             }
             Transaction::Chargeback(tx_data) => {
@@ -126,19 +126,51 @@ impl TransactionProcessor {
                         client.chargeback(t.amount.unwrap());
                         t.under_dispute = false;
                         client.locked = true;
-                    }
+                    } // else ignore since it is an error on partners side
                 }
             }
         }
         Ok(())
     }
+}
 
-    pub async fn get_accounts_state(self) -> Vec<Account> {
-        let accounts = self.accounts.read().await;
-        accounts
+#[cfg(test)]
+mod test {
+    use super::*;
+    use tokio::task::JoinHandle;
+
+    #[tokio::test]
+    async fn test_one_deposit() {
+        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
+        let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
+        let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
+        let processor: JoinHandle<TransactionProcessor> =
+            tokio::spawn(async move { processor.process().await });
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 1,
+                tx_id: 1,
+                amount: Some(dec!(1.5)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        drop(sender);
+        processor.await.unwrap();
+
+        let accounts_output = accounts.read().await;
+        let output = accounts_output
             .clone()
             .into_iter()
             .map(|(_, v)| v)
-            .collect::<Vec<Account>>()
+            .collect::<Vec<Account>>();
+        assert_eq!(
+            &Account::new(
+                1u16,
+                dec!(1.5),
+                dec!(0),
+                dec!(1.5),
+            ),
+            output.get(0).unwrap()
+        );
     }
 }

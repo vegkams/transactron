@@ -1,6 +1,6 @@
 use rust_decimal::prelude::*;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Transaction {
     Deposit(TransactionData),
     Withdrawal(TransactionData),
@@ -9,7 +9,7 @@ pub enum Transaction {
     Chargeback(TransactionData),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TransactionData {
     pub client_id: u16,
     pub tx_id: u32,
