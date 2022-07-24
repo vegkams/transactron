@@ -1,4 +1,5 @@
 use rust_decimal::prelude::*;
+use std::ops::Deref;
 
 #[derive(Clone, Debug)]
 pub enum Transaction {
@@ -7,6 +8,19 @@ pub enum Transaction {
     Resolve(TransactionData),
     Dispute(TransactionData),
     Chargeback(TransactionData),
+}
+
+impl Deref for Transaction {
+    type Target = TransactionData;
+    fn deref(&self) -> &TransactionData {
+        match self {
+            Transaction::Deposit(tx) => tx,
+            Transaction::Withdrawal(tx) => tx,
+            Transaction::Resolve(tx) => tx,
+            Transaction::Dispute(tx) => tx,
+            Transaction::Chargeback(tx) => tx,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

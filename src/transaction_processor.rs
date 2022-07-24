@@ -1,4 +1,3 @@
-use rust_decimal_macros::dec;
 use std::collections::{btree_map::Entry, BTreeMap};
 use std::sync::Arc;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
@@ -39,37 +38,15 @@ impl TransactionProcessor {
                 Err(_e) => {
                     // Todo: Do more sophisticated error handling. Write the erroneous transaction to log etc.
                     // eprintln!("Error processing transaction: {:?}", _e);
-                },
+                }
             };
         }
 
         self
     }
 
-    async fn try_write_to_ledger(&mut self, tx: TransactionData) -> Result<(), AccountingError> {
-        let mut transactions = self.transactions.write().await;
-        if let Entry::Vacant(e) = transactions.entry(tx.tx_id) {
-            e.insert(tx);
-        } else {
-            return Err(AccountingError::TransactionAlreadyExists);
-        }
-        Ok(())
-    }
-
     pub async fn process_transaction(&mut self, tx: Transaction) -> Result<(), AccountingError> {
-        let client_id = match tx.clone() {
-            Transaction::Deposit(tx_data) => {
-                self.try_write_to_ledger(tx_data.clone()).await?;
-                tx_data.client_id
-            }
-            Transaction::Withdrawal(tx_data) => {
-                self.try_write_to_ledger(tx_data.clone()).await?;
-                tx_data.client_id
-            }
-            Transaction::Dispute(tx_data) => tx_data.client_id,
-            Transaction::Resolve(tx_data) => tx_data.client_id,
-            Transaction::Chargeback(tx_data) => tx_data.client_id,
-        };
+        let client_id = tx.client_id;
 
         let mut accounts = self.accounts.write().await;
         // Create new client with default values if it doesn't already exist
@@ -86,19 +63,22 @@ impl TransactionProcessor {
         match tx {
             Transaction::Deposit(tx_data) => {
                 // Safe to unwrap because of the check performed when the Transaction was created
-                let amount = tx_data.amount.unwrap();
-                if amount > dec!(0) {
-                    client.deposit(amount)
+                client.deposit(tx_data.amount.unwrap());
+                let mut transactions = self.transactions.write().await;
+                if let Entry::Vacant(e) = transactions.entry(tx_data.tx_id) {
+                    e.insert(tx_data);
                 } else {
-                    return Err(AccountingError::DepositError);
+                    return Err(AccountingError::TransactionAlreadyExists);
                 }
             }
             Transaction::Withdrawal(tx_data) => {
-                let amount = tx_data.amount.unwrap();
-                if amount > dec!(0) {
-                    client.withdrawal(tx_data.amount.unwrap())?;
+                // This can fail if the amount exceeds the available amount in the account
+                client.withdrawal(tx_data.amount.unwrap())?;
+                let mut transactions = self.transactions.write().await;
+                if let Entry::Vacant(e) = transactions.entry(tx_data.tx_id) {
+                    e.insert(tx_data);
                 } else {
-                    return Err(AccountingError::WithdrawalError);
+                    return Err(AccountingError::TransactionAlreadyExists);
                 }
             }
             Transaction::Dispute(tx_data) => {
@@ -147,6 +127,7 @@ impl TransactionProcessor {
 mod test {
     use super::*;
     use tokio::task::JoinHandle;
+    use rust_decimal_macros::dec;
 
     #[tokio::test]
     async fn test_one_deposit() {

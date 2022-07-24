@@ -1,5 +1,5 @@
-use account::Account;
 use rust_decimal::prelude::*;
+use rust_decimal_macros::dec;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs::File;
@@ -8,10 +8,10 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
+use account::Account;
+pub use error::AccountingError;
 use transaction::{Transaction, TransactionData};
 use transaction_processor::TransactionProcessor;
-
-pub use error::AccountingError;
 
 mod account;
 mod error;
@@ -95,6 +95,9 @@ fn record_to_transaction(record: Record) -> Option<Transaction> {
                 record.amount?;
                 record.client?;
                 record.tx?;
+                if record.amount.unwrap() <= dec!(0) {
+                    return None;
+                }
                 Some(Transaction::Deposit(TransactionData {
                     client_id: record.client.unwrap(),
                     tx_id: record.tx.unwrap(),
@@ -106,6 +109,9 @@ fn record_to_transaction(record: Record) -> Option<Transaction> {
                 record.amount?;
                 record.client?;
                 record.tx?;
+                if record.amount.unwrap() <= dec!(0) {
+                    return None;
+                }
                 Some(Transaction::Withdrawal(TransactionData {
                     client_id: record.client.unwrap(),
                     tx_id: record.tx.unwrap(),
