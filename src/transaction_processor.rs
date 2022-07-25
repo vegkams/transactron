@@ -126,8 +126,8 @@ impl TransactionProcessor {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tokio::task::JoinHandle;
     use rust_decimal_macros::dec;
+    use tokio::task::JoinHandle;
 
     #[tokio::test]
     async fn test_one_deposit() {
@@ -364,6 +364,294 @@ mod test {
 
         assert_eq!(
             &Account::new(1u16, dec!(4.5), dec!(0), dec!(4.5)),
+            output.get(0).unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_invalid_dispute() {
+        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
+        let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
+        let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
+        let processor: JoinHandle<TransactionProcessor> =
+            tokio::spawn(async move { processor.process().await });
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 1,
+                tx_id: 1,
+                amount: Some(dec!(1.5)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: Some(dec!(3)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Dispute(TransactionData {
+                client_id: 1,
+                tx_id: 3,
+                amount: None,
+                under_dispute: false,
+            }))
+            .unwrap();
+
+        drop(sender);
+        processor.await.unwrap();
+
+        let accounts_output = accounts.read().await;
+        let output = accounts_output
+            .clone()
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect::<Vec<Account>>();
+
+        assert_eq!(
+            &Account::new(1u16, dec!(4.5), dec!(0), dec!(4.5)),
+            output.get(0).unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_invalid_resolve() {
+        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
+        let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
+        let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
+        let processor: JoinHandle<TransactionProcessor> =
+            tokio::spawn(async move { processor.process().await });
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 1,
+                tx_id: 1,
+                amount: Some(dec!(1.5)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: Some(dec!(3)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Dispute(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: None,
+                under_dispute: false,
+            }))
+            .unwrap();
+            sender
+            .send(Transaction::Resolve(TransactionData {
+                client_id: 1,
+                tx_id: 3,
+                amount: None,
+                under_dispute: false,
+            }))
+            .unwrap();
+
+        drop(sender);
+        processor.await.unwrap();
+
+        let accounts_output = accounts.read().await;
+        let output = accounts_output
+            .clone()
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect::<Vec<Account>>();
+
+        assert_eq!(
+            &Account::new(1u16, dec!(1.5), dec!(3), dec!(4.5)),
+            output.get(0).unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_invalid_chargeback() {
+        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
+        let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
+        let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
+        let processor: JoinHandle<TransactionProcessor> =
+            tokio::spawn(async move { processor.process().await });
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 1,
+                tx_id: 1,
+                amount: Some(dec!(1.5)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: Some(dec!(3)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Dispute(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: None,
+                under_dispute: false,
+            }))
+            .unwrap();
+            sender
+            .send(Transaction::Chargeback(TransactionData {
+                client_id: 1,
+                tx_id: 3,
+                amount: None,
+                under_dispute: false,
+            }))
+            .unwrap();
+
+        drop(sender);
+        processor.await.unwrap();
+
+        let accounts_output = accounts.read().await;
+        let output = accounts_output
+            .clone()
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect::<Vec<Account>>();
+
+        assert_eq!(
+            &Account::new(1u16, dec!(1.5), dec!(3), dec!(4.5)),
+            output.get(0).unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_chargeback_with_insufficient_funds() {
+        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
+        let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
+        let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
+        let processor: JoinHandle<TransactionProcessor> =
+            tokio::spawn(async move { processor.process().await });
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 1,
+                tx_id: 1,
+                amount: Some(dec!(1.5)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: Some(dec!(3)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Withdrawal(TransactionData {
+                client_id: 1,
+                tx_id: 3,
+                amount: Some(dec!(2)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Dispute(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: None,
+                under_dispute: false,
+            }))
+            .unwrap();
+            sender
+            .send(Transaction::Chargeback(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: None,
+                under_dispute: false,
+            }))
+            .unwrap();
+
+        drop(sender);
+        processor.await.unwrap();
+
+        let accounts_output = accounts.read().await;
+        let output = accounts_output
+            .clone()
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect::<Vec<Account>>();
+
+        assert_eq!(
+            &Account::new(1u16, dec!(2.5), dec!(0), dec!(2.5)),
+            output.get(0).unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resolve_with_insufficient_funds() {
+        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
+        let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
+        let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
+        let processor: JoinHandle<TransactionProcessor> =
+            tokio::spawn(async move { processor.process().await });
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 1,
+                tx_id: 1,
+                amount: Some(dec!(1.5)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Deposit(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: Some(dec!(3)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Withdrawal(TransactionData {
+                client_id: 1,
+                tx_id: 3,
+                amount: Some(dec!(2)),
+                under_dispute: false,
+            }))
+            .unwrap();
+        sender
+            .send(Transaction::Dispute(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: None,
+                under_dispute: false,
+            }))
+            .unwrap();
+            sender
+            .send(Transaction::Resolve(TransactionData {
+                client_id: 1,
+                tx_id: 2,
+                amount: None,
+                under_dispute: false,
+            }))
+            .unwrap();
+
+        drop(sender);
+        processor.await.unwrap();
+
+        let accounts_output = accounts.read().await;
+        let output = accounts_output
+            .clone()
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect::<Vec<Account>>();
+
+        assert_eq!(
+            &Account::new(1u16, dec!(2.5), dec!(0), dec!(2.5)),
             output.get(0).unwrap()
         );
     }
