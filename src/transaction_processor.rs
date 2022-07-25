@@ -44,7 +44,7 @@ impl TransactionProcessor {
 
         self
     }
-
+    
     pub async fn process_transaction(&mut self, tx: Transaction) -> Result<(), AccountingError> {
         let client_id = tx.client_id;
 

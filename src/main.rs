@@ -76,6 +76,7 @@ fn print_output(output: Vec<Account>) {
     writer.flush().unwrap();
 }
 
+// Creates and returns a buffered csv reader, avoids loading the entire input file into memory
 fn buffered_tx_reader(csv_path: String) -> Result<csv::Reader<BufReader<File>>, Box<dyn Error>> {
     let file = File::open(csv_path)?;
     let buffered_reader = BufReader::new(file);
@@ -88,6 +89,7 @@ fn buffered_tx_reader(csv_path: String) -> Result<csv::Reader<BufReader<File>>, 
     Ok(csv_reader)
 }
 
+// Transforms the Record struct into the Transaction enum with inner TransactionData
 fn record_to_transaction(record: Record) -> Option<Transaction> {
     if let Some(transaction_type) = record.transaction_type {
         match transaction_type.as_str() {
