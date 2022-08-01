@@ -1,6 +1,10 @@
 use rust_decimal::prelude::*;
 use std::ops::Deref;
 
+pub type TxID = u32;
+pub type ClientID = u16;
+pub type Amount = Decimal;
+
 #[derive(Clone, Debug)]
 pub enum Transaction {
     Deposit(TransactionData),
@@ -25,8 +29,8 @@ impl Deref for Transaction {
 
 #[derive(Clone, Debug)]
 pub struct TransactionData {
-    pub client_id: u16,
-    pub tx_id: u32,
-    pub amount: Option<Decimal>,
+    pub client_id: ClientID,
+    pub tx_id: TxID,
+    pub amount: Option<Amount>,
     pub under_dispute: bool,
 }

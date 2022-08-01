@@ -4,19 +4,19 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::RwLock;
 
 use crate::account::Account;
-use crate::transaction::{Transaction, TransactionData};
+use crate::transaction::{ClientID, Transaction, TransactionData, TxID};
 use crate::AccountingError;
 
 pub struct TransactionProcessor {
-    accounts: Arc<RwLock<BTreeMap<u16, Account>>>,
-    transactions: Arc<RwLock<BTreeMap<u32, TransactionData>>>,
+    accounts: Arc<RwLock<BTreeMap<ClientID, Account>>>,
+    transactions: Arc<RwLock<BTreeMap<TxID, TransactionData>>>,
     transaction_recv: UnboundedReceiver<Transaction>,
 }
 
 impl TransactionProcessor {
     pub fn new(
-        transactions: Arc<RwLock<BTreeMap<u32, TransactionData>>>,
-        accounts: Arc<RwLock<BTreeMap<u16, Account>>>,
+        transactions: Arc<RwLock<BTreeMap<TxID, TransactionData>>>,
+        accounts: Arc<RwLock<BTreeMap<ClientID, Account>>>,
     ) -> (Self, UnboundedSender<Transaction>) {
         let (sender, receiver) = unbounded_channel();
         (
@@ -44,8 +44,8 @@ impl TransactionProcessor {
 
         self
     }
-    
-    pub async fn process_transaction(&mut self, tx: Transaction) -> Result<(), AccountingError> {
+
+    async fn process_transaction(&mut self, tx: Transaction) -> Result<(), AccountingError> {
         let client_id = tx.client_id;
 
         let mut accounts = self.accounts.write().await;
@@ -131,8 +131,8 @@ mod test {
 
     #[tokio::test]
     async fn test_one_deposit() {
-        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
-        let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
+        let ledger: Arc<RwLock<BTreeMap<TxID, TransactionData>>> = Default::default();
+        let accounts: Arc<RwLock<BTreeMap<ClientID, Account>>> = Default::default();
         let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
         let processor: JoinHandle<TransactionProcessor> =
             tokio::spawn(async move { processor.process().await });
@@ -161,7 +161,7 @@ mod test {
 
     #[tokio::test]
     async fn test_two_deposits_and_one_withdrawal() {
-        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
+        let ledger: Arc<RwLock<BTreeMap<TxID, TransactionData>>> = Default::default();
         let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
         let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
         let processor: JoinHandle<TransactionProcessor> =
@@ -212,7 +212,7 @@ mod test {
 
     #[tokio::test]
     async fn test_dispute() {
-        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
+        let ledger: Arc<RwLock<BTreeMap<TxID, TransactionData>>> = Default::default();
         let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
         let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
         let processor: JoinHandle<TransactionProcessor> =
@@ -259,7 +259,7 @@ mod test {
 
     #[tokio::test]
     async fn test_chargeback() {
-        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
+        let ledger: Arc<RwLock<BTreeMap<TxID, TransactionData>>> = Default::default();
         let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
         let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
         let processor: JoinHandle<TransactionProcessor> =
@@ -314,7 +314,7 @@ mod test {
 
     #[tokio::test]
     async fn test_resolve() {
-        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
+        let ledger: Arc<RwLock<BTreeMap<TxID, TransactionData>>> = Default::default();
         let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
         let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
         let processor: JoinHandle<TransactionProcessor> =
@@ -370,7 +370,7 @@ mod test {
 
     #[tokio::test]
     async fn test_invalid_dispute() {
-        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
+        let ledger: Arc<RwLock<BTreeMap<TxID, TransactionData>>> = Default::default();
         let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
         let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
         let processor: JoinHandle<TransactionProcessor> =
@@ -418,7 +418,7 @@ mod test {
 
     #[tokio::test]
     async fn test_invalid_resolve() {
-        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
+        let ledger: Arc<RwLock<BTreeMap<TxID, TransactionData>>> = Default::default();
         let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
         let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
         let processor: JoinHandle<TransactionProcessor> =
@@ -447,7 +447,7 @@ mod test {
                 under_dispute: false,
             }))
             .unwrap();
-            sender
+        sender
             .send(Transaction::Resolve(TransactionData {
                 client_id: 1,
                 tx_id: 3,
@@ -474,7 +474,7 @@ mod test {
 
     #[tokio::test]
     async fn test_invalid_chargeback() {
-        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
+        let ledger: Arc<RwLock<BTreeMap<TxID, TransactionData>>> = Default::default();
         let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
         let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
         let processor: JoinHandle<TransactionProcessor> =
@@ -503,7 +503,7 @@ mod test {
                 under_dispute: false,
             }))
             .unwrap();
-            sender
+        sender
             .send(Transaction::Chargeback(TransactionData {
                 client_id: 1,
                 tx_id: 3,
@@ -530,7 +530,7 @@ mod test {
 
     #[tokio::test]
     async fn test_chargeback_with_insufficient_funds() {
-        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
+        let ledger: Arc<RwLock<BTreeMap<TxID, TransactionData>>> = Default::default();
         let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
         let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
         let processor: JoinHandle<TransactionProcessor> =
@@ -567,7 +567,7 @@ mod test {
                 under_dispute: false,
             }))
             .unwrap();
-            sender
+        sender
             .send(Transaction::Chargeback(TransactionData {
                 client_id: 1,
                 tx_id: 2,
@@ -594,8 +594,8 @@ mod test {
 
     #[tokio::test]
     async fn test_resolve_with_insufficient_funds() {
-        let ledger: Arc<RwLock<BTreeMap<u32, TransactionData>>> = Default::default();
-        let accounts: Arc<RwLock<BTreeMap<u16, Account>>> = Default::default();
+        let ledger: Arc<RwLock<BTreeMap<TxID, TransactionData>>> = Default::default();
+        let accounts: Arc<RwLock<BTreeMap<ClientID, Account>>> = Default::default();
         let (processor, sender) = TransactionProcessor::new(ledger.clone(), accounts.clone());
         let processor: JoinHandle<TransactionProcessor> =
             tokio::spawn(async move { processor.process().await });
@@ -631,7 +631,7 @@ mod test {
                 under_dispute: false,
             }))
             .unwrap();
-            sender
+        sender
             .send(Transaction::Resolve(TransactionData {
                 client_id: 1,
                 tx_id: 2,

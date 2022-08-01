@@ -3,19 +3,21 @@ use thiserror::Error;
 #[derive(Debug, Error, Clone)]
 pub enum AccountingError {
     #[error("Error: Insufficient funds for withdrawal")]
-    WithdrawalError,
+    Withdrawal,
     #[error("Error: Deposit transaction without an amount")]
-    DepositError,
+    Deposit,
     #[error("Error: Insufficient funds for dispute")]
-    DisputeError,
+    Dispute,
     #[error("Error: Could not deserialize record: {0}")]
-    DeserializeError(String),
+    Deserialize(String),
+    #[error("Error: malformed transaction")]
+    MalformedTransaction,
     #[error("Error: Could not send tx data to worker: {0}")]
-    TokioChannelError(String),
+    TokioChannel(String),
     #[error("Error: The transaction already exists in the ledger")]
     TransactionAlreadyExists,
     #[error("Error: Account is locked")]
     AccountLocked,
     #[error("Error: Processor future returned error: {0}")]
-    HandleAwaitError(String),
+    HandleAwait(String),
 }
