@@ -63,22 +63,28 @@ impl TransactionProcessor {
         match tx {
             Transaction::Deposit(tx_data) => {
                 // Safe to unwrap because of the check performed when the Transaction was created
-                client.deposit(tx_data.amount.unwrap());
+                let amount = tx_data.amount.unwrap();
                 let mut transactions = self.transactions.write().await;
                 if let Entry::Vacant(e) = transactions.entry(tx_data.tx_id) {
                     e.insert(tx_data);
                 } else {
                     return Err(AccountingError::TransactionAlreadyExists);
                 }
+                client.deposit(amount);
             }
             Transaction::Withdrawal(tx_data) => {
-                // This can fail if the amount exceeds the available amount in the account
-                client.withdrawal(tx_data.amount.unwrap())?;
+                let amount = tx_data.amount.unwrap();
                 let mut transactions = self.transactions.write().await;
-                if let Entry::Vacant(e) = transactions.entry(tx_data.tx_id) {
-                    e.insert(tx_data);
-                } else {
-                    return Err(AccountingError::TransactionAlreadyExists);
+                // This can fail if the amount exceeds the available amount in the account
+                match client.withdrawal(amount) {
+                    Ok(()) => {
+                        if let Entry::Vacant(e) = transactions.entry(tx_data.tx_id) {
+                            e.insert(tx_data);
+                        } else {
+                            return Err(AccountingError::TransactionAlreadyExists);
+                        }
+                    }
+                    Err(e) => return Err(e),
                 }
             }
             Transaction::Dispute(tx_data) => {
